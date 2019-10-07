@@ -1,0 +1,31 @@
+cabal-version: 1.12
+name:          opaque-constraints
+version:       0.1.0.0
+synopsis:      Helper to setup constraint synonyms that give better error messages
+description:   Please see the README on GitHub at <https://github.com/basile-henry/opaque-constraints#readme>
+category:      Type Errors
+homepage:      https://github.com/basile-henry/opaque-constraints#readme
+bug-reports:   https://github.com/basile-henry/opaque-constraints/issues
+author:        Basile Henry
+maintainer:    bjm.henry+opaque-constraints@gmail.com
+copyright:     2019 Basile Henry
+license:       MIT
+license-file:  LICENSE
+build-type:    Simple
+extra-source-files:
+  README.md
+
+source-repository head
+  type: git
+  location: https://github.com/basile-henry/opaque-constraints
+
+library
+  exposed-modules:
+    Data.Constraint.Opaque
+  hs-source-dirs:
+    src
+  build-depends:
+      base >=4.7 && <5
+    , template-haskell
+  default-language: Haskell2010
+  ghc-options: -Wall
