@@ -177,7 +177,7 @@ isInstantiableClass = fmap filterClasse . reify
 dummyInstance :: Name -> Name -> DecQ
 dummyInstance data' class' = do
   ClassI dec _ <- reify class'
-  ClassD _ _ _ _ sigs <- pure dec
+  ClassD _ _ tyVarBndrs _ sigs <- pure dec
 
   let sigName (SigD n _) = Just n
       sigName _          = Nothing
@@ -197,7 +197,7 @@ dummyInstance data' class' = do
 
   instanceD
     (cxt [])
-    (pure $ AppT (ConT class') (ConT data'))
+    (appliedContT class' . replicate (length tyVarBndrs) $ conT data')
     (errorFunction <$> funs)
 
 opaqueSynonymInstance :: Name -> TypeSynonym -> DecQ
