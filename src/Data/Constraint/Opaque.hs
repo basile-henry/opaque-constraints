@@ -65,7 +65,7 @@ module Data.Constraint.Opaque
 import           Control.Monad              (filterM)
 import           Data.IORef                 (atomicModifyIORef')
 import           Data.List                  (foldl')
-import           Data.Maybe                 (mapMaybe)
+import           Data.Maybe                 (mapMaybe, maybeToList)
 import           Data.Typeable              (Typeable)
 import           GHC.TypeLits               (KnownNat, KnownSymbol)
 
@@ -111,19 +111,12 @@ mkOpaque' polyKinded decls = do
           dataFamilyD opaque [] (Just $ VarT k)
         | otherwise = dataD (cxt []) opaque [] Nothing [] []
 
-      opaqueSynonymInstance synonym =
-        instanceWithOverlapD
-          (Just Overlapping)
-          (cxt [])
-          (pure $ AppT (ConT synonym) (ConT opaque))
-          []
-
   sequence $ concat
     [ pure opaqueData
     , map (dummyInstance opaque) classes
     , map synonymClass synonyms
     , map synonymInstance synonyms
-    , map (opaqueSynonymInstance . synonym) synonyms
+    , map (opaqueSynonymInstance opaque) synonyms
     ]
 
 data TypeSynonym =
@@ -164,7 +157,7 @@ synonymInstance TypeSynonym{..} =
 isInstantiableClass :: Name -> Q Bool
 isInstantiableClass = fmap filterClasse . reify
   where
-    notInstantiableClasses =
+    nonInstantiableClasses =
       [ ''KnownNat
       , ''KnownSymbol
       , ''Typeable
@@ -173,7 +166,7 @@ isInstantiableClass = fmap filterClasse . reify
     filterClasse c
       | ClassI dec _ <- c
       , ClassD _ name _ _ _ <- dec
-      = name `notElem` notInstantiableClasses
+      = name `notElem` nonInstantiableClasses
 
       | otherwise = False
 
@@ -203,3 +196,41 @@ dummyInstance data' class' = do
     (cxt [])
     (pure $ AppT (ConT class') (ConT data'))
     (errorFunction <$> funs)
+
+opaqueSynonymInstance :: Name -> TypeSynonym -> DecQ
+opaqueSynonymInstance opaque TypeSynonym{..} = do
+  preds <- maybeToList <$> instanceConstraints constraint
+
+  instanceWithOverlapD
+    (Just Overlapping)
+    (cxt $ fmap pure preds)
+    (pure $ AppT (ConT synonym) (ConT opaque))
+    []
+  where
+    instanceConstraints :: Type -> Q (Maybe Type)
+    instanceConstraints x = do
+      runIO $ print x
+      case x of
+        AppT (TupleT n) r ->
+          instanceConstraints r >>= \case
+            Nothing -> pure . Just $ TupleT (pred n)
+            Just t  -> pure . Just $ AppT (TupleT n) t
+
+        AppT l r -> do
+          l' <- instanceConstraints l
+          r' <- instanceConstraints r
+          pure $ AppT <$> l' <*> r'
+
+        t@(ConT name) -> do
+          instantiable <- isInstantiableClass name
+          pure $
+            if instantiable
+            -- drop instantiable classes, we already have instances for them
+            then Nothing
+            else Just t
+
+        VarT _ ->
+          -- Replace free variables by opaque
+          pure $ Just (ConT opaque)
+
+        t -> pure $ Just t
