@@ -65,7 +65,7 @@ module Data.Constraint.Opaque
 import           Control.Monad              (filterM)
 import           Data.IORef                 (atomicModifyIORef')
 import           Data.List                  (foldl', nub)
-import           Data.Maybe                 (mapMaybe, maybeToList)
+import           Data.Maybe                 (mapMaybe)
 import           Data.Typeable              (Typeable)
 import           GHC.TypeLits               (KnownNat, KnownSymbol)
 
@@ -202,38 +202,28 @@ dummyInstance data' class' = do
 
 opaqueSynonymInstance :: Name -> TypeSynonym -> DecQ
 opaqueSynonymInstance opaque TypeSynonym{..} = do
-  preds <- maybeToList <$> instanceConstraints constraint
+  preds <- instanceConstraints constraint
 
   instanceWithOverlapD
     (Just Overlapping)
-    (cxt $ fmap pure preds)
-    (appliedContT synonym . replicate (length typeVars) $ conT opaque)
+    (cxt [pure preds])
+    appliedSynonym
     []
   where
-    instanceConstraints :: Type -> Q (Maybe Type)
-    instanceConstraints x = do
-      runIO $ print x
-      case x of
-        AppT (TupleT n) r ->
-          instanceConstraints r >>= \case
-            Nothing -> pure . Just $ TupleT (pred n)
-            Just t  -> pure . Just $ AppT (TupleT n) t
+    appliedSynonym =
+      case typeVars of
+        [] -> conT synonym
+        (_:otherVars) ->
+          -- Only replace the first type var with opaque
+          appliedContT synonym $ conT opaque : fmap varT otherVars
 
-        AppT l r -> do
-          l' <- instanceConstraints l
-          r' <- instanceConstraints r
-          pure $ AppT <$> l' <*> r'
+    instanceConstraints :: Type -> Q Type
+    instanceConstraints = \case
+      AppT l r ->
+        AppT <$> instanceConstraints l <*> instanceConstraints r
 
-        t@(ConT name) -> do
-          instantiable <- isInstantiableClass name
-          pure $
-            if instantiable
-            -- drop instantiable classes, we already have instances for them
-            then Nothing
-            else Just t
+      VarT n | typeVar:_ <- typeVars, n == typeVar ->
+        -- Replace the first type variables by opaque
+        pure $ ConT opaque
 
-        VarT _ ->
-          -- Replace free variables by opaque
-          pure $ Just (ConT opaque)
-
-        t -> pure $ Just t
+      t -> pure t
