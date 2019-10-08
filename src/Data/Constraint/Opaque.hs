@@ -150,9 +150,12 @@ synonymClass TypeSynonym{..} =
 
 synonymInstance :: TypeSynonym -> DecQ
 synonymInstance TypeSynonym{..} =
-  instanceD (cxt [pure constraint]) appliedSynonym []
-  where
-    appliedSynonym = foldl' appT (conT synonym) (varT <$> typeVars)
+  instanceD
+    (cxt [pure constraint])
+    (appliedContT synonym $ fmap varT typeVars) []
+
+appliedContT :: Name -> [TypeQ] -> TypeQ
+appliedContT synonym = foldl' appT (conT synonym)
 
 isInstantiableClass :: Name -> Q Bool
 isInstantiableClass = fmap filterClasse . reify
@@ -204,7 +207,7 @@ opaqueSynonymInstance opaque TypeSynonym{..} = do
   instanceWithOverlapD
     (Just Overlapping)
     (cxt $ fmap pure preds)
-    (pure $ AppT (ConT synonym) (ConT opaque))
+    (appliedContT synonym . replicate (length typeVars) $ conT opaque)
     []
   where
     instanceConstraints :: Type -> Q (Maybe Type)
