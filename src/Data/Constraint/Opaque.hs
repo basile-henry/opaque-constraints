@@ -56,7 +56,10 @@ Thanks to Csongor Kiss for the ideas making this possible!
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 
-module Data.Constraint.Opaque (mkOpaque) where
+module Data.Constraint.Opaque
+  ( mkOpaque
+  , mkOpaquePoly
+  ) where
 
 -- base
 import           Control.Monad              (filterM)
@@ -76,13 +79,24 @@ in error messages.
 
 The function is intended to be used with a declaration QuasiQuote @[d| ... |]@
 as argument. The QuasiQuote may only contain constraint synonyms (and comments).
-
-/Note/: If you need a version of `mkOpaque` that support constraints over non
-`Type` kinds (for example @GHC.TypeLits.KnownNat (n :: Nat)@), simply make sure
-to enable the @PolyKinds@ extension and `mkOpaque` will be able to handle it!
 -}
 mkOpaque :: DecsQ -> DecsQ
-mkOpaque decls = do
+mkOpaque = mkOpaque' False
+
+{- |
+Same as `mkOpaque` but also supports constraints over non `*`/`Type` kinds
+(for example @GHC.TypeLits.KnownNat (n :: Nat)@)
+
+If unsure between using `mkOpaque` and `mkOpaquePoly`, using `mkOpaquePoly` is
+a good default.
+
+/Note/: This will require the @PolyKinds@ extension.
+-}
+mkOpaquePoly :: DecsQ -> DecsQ
+mkOpaquePoly = mkOpaque' True
+
+mkOpaque' :: Bool -> DecsQ -> DecsQ
+mkOpaque' polyKinded decls = do
   synonyms <- (fmap . fmap) typeSynonym decls
 
   let constraints = concatMap synonymConstraints synonyms
@@ -91,14 +105,11 @@ mkOpaque decls = do
   count <- runIO $ atomicModifyIORef' counter (\c -> (succ c, c))
   opaque <- newName $ "Opaque_" ++ show count
 
-  let opaqueData = do
-        polyKindsEnabled <- isExtEnabled PolyKinds
-
-        if polyKindsEnabled
-        then do
+  let opaqueData
+        | polyKinded = do
           k <- newName "k"
           dataFamilyD opaque [] (Just $ VarT k)
-        else dataD (cxt []) opaque [] Nothing [] []
+        | otherwise = dataD (cxt []) opaque [] Nothing [] []
 
       opaqueSynonymInstance synonym =
         instanceWithOverlapD
