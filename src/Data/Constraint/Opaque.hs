@@ -64,7 +64,7 @@ module Data.Constraint.Opaque
 -- base
 import           Control.Monad              (filterM)
 import           Data.IORef                 (atomicModifyIORef')
-import           Data.List                  (foldl')
+import           Data.List                  (foldl', nub)
 import           Data.Maybe                 (mapMaybe, maybeToList)
 import           Data.Typeable              (Typeable)
 import           GHC.TypeLits               (KnownNat, KnownSymbol)
@@ -100,7 +100,7 @@ mkOpaque' polyKinded decls = do
   synonyms <- (fmap . fmap) typeSynonym decls
 
   let constraints = concatMap synonymConstraints synonyms
-  classes <- filterM isInstantiableClass constraints
+  classes <- nub <$> filterM isInstantiableClass constraints
 
   count <- runIO $ atomicModifyIORef' counter (\c -> (succ c, c))
   opaque <- newName $ "Opaque_" ++ show count
