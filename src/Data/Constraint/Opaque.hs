@@ -63,6 +63,8 @@ import           Control.Monad              (filterM)
 import           Data.IORef                 (atomicModifyIORef')
 import           Data.List                  (foldl')
 import           Data.Maybe                 (mapMaybe)
+import           Data.Typeable              (Typeable)
+import           GHC.TypeLits               (KnownNat, KnownSymbol)
 
 -- template-haskell
 import           Language.Haskell.TH
@@ -84,7 +86,7 @@ mkOpaque decls = do
   synonyms <- (fmap . fmap) typeSynonym decls
 
   let constraints = concatMap synonymConstraints synonyms
-  classes <- filterM isClass constraints
+  classes <- filterM isInstantiableClass constraints
 
   count <- runIO $ atomicModifyIORef' counter (\c -> (succ c, c))
   opaque <- newName $ "Opaque_" ++ show count
@@ -148,14 +150,21 @@ synonymInstance TypeSynonym{..} =
   where
     appliedSynonym = foldl' appT (conT synonym) (varT <$> typeVars)
 
-isClass :: Name -> Q Bool
-isClass =
-  fmap
-    (\case
-      ClassI dec _
-        | ClassD{} <- dec -> True
-      _                   -> False)
-  . reify
+isInstantiableClass :: Name -> Q Bool
+isInstantiableClass = fmap filterClasse . reify
+  where
+    notInstantiableClasses =
+      [ ''KnownNat
+      , ''KnownSymbol
+      , ''Typeable
+      ]
+
+    filterClasse c
+      | ClassI dec _ <- c
+      , ClassD _ name _ _ _ <- dec
+      = name `notElem` notInstantiableClasses
+
+      | otherwise = False
 
 -- This assumes only class declarations are passed as the second argument
 dummyInstance :: Name -> Name -> DecQ
